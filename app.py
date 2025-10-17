@@ -111,6 +111,17 @@ Keep all outputs deterministic (temperature=0).
 
 # —— UI: 안내문(참가자에게 보이는 부분) ——
 st.title("🤖 연구용 실험 챗봇")
+st.markdown(
+    f"""
+<div style="margin:6px 0 12px 0;">
+  <span style="
+    display:inline-block; padding:6px 12px; border-radius:999px;
+    background:#EEF2FF; color:#1E3A8A; font-weight:700; font-size:13px;">
+    Type {TYPE_CODE}
+  </span>
+</div>
+""",
+    unsafe_allow_html=True
 with st.expander("실험 안내 / 입력 형식", expanded=True):
     st.markdown("""
 본 실험은 **챗봇을 활용한 연구**입니다. 본격적인 실험을 시작하기에 앞서 간단한 사전 조사를 진행합니다.  
@@ -193,3 +204,4 @@ if user_text:
 
     st.session_state.messages.append({"role": "assistant", "content": reply_md})
     st.chat_message("assistant", avatar=pick_assistant_avatar()).markdown(reply_md, unsafe_allow_html=True)
+
