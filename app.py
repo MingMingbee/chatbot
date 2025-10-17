@@ -1,10 +1,13 @@
-# app.py — 최소구성(시스템 프롬프트만 적용)
+# app.py — 아바타 4종(인간 남/여, 로봇 남/여) 자동 전환 포함 최소구성
 import streamlit as st
 from openai import OpenAI
 
 st.set_page_config(page_title="연구용 실험 챗봇", page_icon="🤖", layout="centered")
 
+# ─────────────────────────────
 # TypeCode 쿼리 파라미터 (?type=1..8)
+# 1~4=인간, 5~8=AI
+# ─────────────────────────────
 qp = st.query_params
 try:
     TYPE_CODE = int(qp.get("type", ["1"])[0])
@@ -13,10 +16,21 @@ except Exception:
 if TYPE_CODE not in range(1, 9):
     TYPE_CODE = 1
 
+def is_ai_colleague(type_code: int) -> bool:
+    return type_code in (5, 6, 7, 8)
+
+# ─────────────────────────────
 # Secrets
-API_KEY = st.secrets.get("OPENAI_API_KEY", "")
-MODEL   = st.secrets.get("OPENAI_MODEL", "gpt-4o-mini")
-BASE_URL = st.secrets.get("OPENAI_BASE_URL", None)  # 공식 OpenAI면 secrets에 넣지 말기
+# ─────────────────────────────
+API_KEY  = st.secrets.get("OPENAI_API_KEY", "")
+MODEL    = st.secrets.get("OPENAI_MODEL", "gpt-4o-mini")
+BASE_URL = st.secrets.get("OPENAI_BASE_URL", None)  # 공식 OpenAI면 넣지 않기
+
+# 아바타 이미지 URL(선택). 없으면 이모지 사용
+HUMAN_MALE_AVATAR_URL   = st.secrets.get("HUMAN_MALE_AVATAR_URL", "").strip()
+HUMAN_FEMALE_AVATAR_URL = st.secrets.get("HUMAN_FEMALE_AVATAR_URL", "").strip()
+AI_MALE_AVATAR_URL      = st.secrets.get("AI_MALE_AVATAR_URL", "").strip()
+AI_FEMALE_AVATAR_URL    = st.secrets.get("AI_FEMALE_AVATAR_URL", "").strip()
 
 if not API_KEY:
     st.error("Secrets에 OPENAI_API_KEY가 없습니다.")
@@ -24,7 +38,53 @@ if not API_KEY:
 
 client = OpenAI(api_key=API_KEY, base_url=BASE_URL) if BASE_URL else OpenAI(api_key=API_KEY)
 
-# —— 시스템 프롬프트(사용자 제공 원문 그대로). TypeCode만 주입 ——
+# ─────────────────────────────
+# 성별코드 추출/고정
+#  - 최초 유효 입력(이름, 성별, 업무, 어조)에서 성별코드(1/2) 고정
+# ─────────────────────────────
+if "gender_code" not in st.session_state:
+    st.session_state.gender_code = None  # 1=남, 2=여
+
+def try_fix_gender_from_text(text: str):
+    """'이름, 성별번호, 업무번호, 어조번호' 형식에서 성별번호(1/2) 파싱"""
+    if st.session_state.gender_code in (1, 2):
+        return  # 이미 고정됨
+    if not text:
+        return
+    t = text.replace("，", ",")  # 전각 콤마 대비
+    parts = [p.strip() for p in t.split(",")]
+    if len(parts) >= 4 and parts[1].isdigit():
+        g = int(parts[1])
+        if g in (1, 2):
+            st.session_state.gender_code = g
+
+def current_gender_code() -> int:
+    """알 수 없으면 기본 남성(1)로 표시만 처리"""
+    return st.session_state.gender_code if st.session_state.gender_code in (1, 2) else 1
+
+# ─────────────────────────────
+# 아바타 결정: 인간/AI × 성별(남/여)
+#  - URL이 있으면 URL, 없으면 이모지
+# ─────────────────────────────
+def pick_assistant_avatar():
+    g = current_gender_code()
+    if is_ai_colleague(TYPE_CODE):
+        if g == 1:
+            return AI_MALE_AVATAR_URL if AI_MALE_AVATAR_URL else "🤖"      # 남성형 로봇
+        else:
+            # 전용 여성 로봇 이미지가 없으면 기본 로봇 이모지 사용
+            return AI_FEMALE_AVATAR_URL if AI_FEMALE_AVATAR_URL else "🤖"
+    else:
+        if g == 1:
+            return HUMAN_MALE_AVATAR_URL if HUMAN_MALE_AVATAR_URL else "🧑‍💼"  # 남성 인간
+        else:
+            return HUMAN_FEMALE_AVATAR_URL if HUMAN_FEMALE_AVATAR_URL else "👩‍💼"  # 여성 인간
+
+USER_AVATAR = "🙂"
+
+# ─────────────────────────────
+# 시스템 프롬프트(원문 유지, TypeCode만 주입)
+# ─────────────────────────────
 SYSTEM_PROMPT = f"""
 You are an experimental chatbot for research.
 This session applies TypeCode={TYPE_CODE}. (성별/업무/어조=일치/불일치 조합은 백엔드 규칙에 따름)
@@ -106,8 +166,10 @@ Keep all outputs deterministic (temperature=0).
 - Same input → same output. No randomness.
 """
 
-# —— UI: 안내문(참가자에게 보이는 부분) ——
-st.title("🤖 연구용 실험 챗봇")
+# ─────────────────────────────
+# UI: 안내/입력 형식
+# ─────────────────────────────
+st.title("연구용 실험 챗봇")
 with st.expander("실험 안내 / 입력 형식", expanded=True):
     st.markdown("""
 본 실험은 **챗봇을 활용한 연구**입니다. 본격적인 실험을 시작하기에 앞서 간단한 사전 조사를 진행합니다.  
@@ -117,13 +179,13 @@ with st.expander("실험 안내 / 입력 형식", expanded=True):
 1) 남성  
 2) 여성  
 
-업무를 진행하는 데 있어서 선호하는 방식:  
-1) 시간이 오래 걸리더라도 세부 사항까지 꼼꼼히 챙기며 진행하는 편  
-2) 빠르게 핵심만 파악하고 신속하게 진행하는 편  
+업무 선호:  
+1) 시간이 오래 걸려도 꼼꼼하게  
+2) 빠르게 핵심만 신속하게  
 
-사람들과 대화할 때 더 편안하게 느끼는 어조:  
-1) 격식 있고 공식적인 어조 (형식적·정중한 표현 선호)  
-2) 친근하고 편안한 어조 (일상적인 대화, 부드러운 표현 선호)  
+대화 어조:  
+1) 격식 있는 공식형  
+2) 친근한 반말형  
 
 입력 형식:  
 이름, 성별번호, 업무번호, 어조번호  
@@ -133,29 +195,36 @@ with st.expander("실험 안내 / 입력 형식", expanded=True):
 - 이민용, 1, 1, 2
 """)
 
-# —— 대화 상태
+# ─────────────────────────────
+# 대화 상태
+# ─────────────────────────────
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# 과거 대화 출력
+# 과거 대화 출력 (현재 고정된/추정된 성별 기반 아바타 적용)
 for m in st.session_state.messages:
-    st.chat_message(m["role"]).markdown(m["content"])
+    role = m["role"]
+    content = m["content"]
+    avatar = USER_AVATAR if role == "user" else pick_assistant_avatar()
+    st.chat_message(role, avatar=avatar).markdown(content)
 
-# 입력창 (자동 초기화, 세션 직접 조작 불필요)
+# 입력창
 user_text = st.chat_input("메시지를 입력하세요")
 
 if user_text:
-    # 사용자 메시지 반영
+    # 최초 입력에서 성별 고정 시도
+    try_fix_gender_from_text(user_text)
+
+    # 사용자 메시지 반영/출력
     st.session_state.messages.append({"role": "user", "content": user_text})
-    st.chat_message("user").markdown(user_text)
+    st.chat_message("user", avatar=USER_AVATAR).markdown(user_text)
 
     # 모델 호출
     try:
         with st.spinner("응답 생성 중..."):
             resp = client.chat.completions.create(
                 model=MODEL,
-                messages=[{"role": "system", "content": SYSTEM_PROMPT}] +
-                         st.session_state.messages,
+                messages=[{"role": "system", "content": SYSTEM_PROMPT}] + st.session_state.messages,
                 temperature=0,
                 timeout=30,
             )
@@ -163,6 +232,6 @@ if user_text:
     except Exception as e:
         reply = f"응답 생성 중 오류가 발생했습니다: {e}"
 
-    # 어시스턴트 출력/저장
+    # 어시스턴트 메시지 저장/표시 (TypeCode × 성별에 맞춰 아바타 자동 적용)
     st.session_state.messages.append({"role": "assistant", "content": reply})
-    st.chat_message("assistant").markdown(reply)
+    st.chat_message("assistant", avatar=pick_assistant_avatar()).markdown(reply)
