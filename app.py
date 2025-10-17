@@ -1,4 +1,4 @@
-# app.py — 원본 유지 + 아바타(인간 남/여, 로봇 단일) + 남자 이모지 🧑 적용
+# app.py — 원본 유지 + 주관식 응답 안내문 추가(톤별 문체)
 import streamlit as st
 from openai import OpenAI
 
@@ -81,10 +81,12 @@ Keep all outputs deterministic (temperature=0).
 
   * 친근형:
     "과제2: 지구 말고 다른 행성 중에서 생명체가 살 수 있을 것 같은 곳을 하나 고르고, 그렇게 생각한 이유를 자유롭게 말해줘.
+     답변은 아래와 같이 작성해줘.
      답변: 자유 서술"
 
   * 공식형:
     "과제2: 지구를 제외했을 때, 태양계 행성 중에서 생명체가 존재할 가능성이 가장 높다고 생각하는 행성을 고르고, 그렇게 판단한 근거를 자유롭게 설명해 주십시오.
+     답변은 아래 형식에 맞게 작성해 주십시오.
      답변: 자유 서술"
 
 - If input starts with "답변:" (자유 서술) →
@@ -137,59 +139,47 @@ with st.expander("실험 안내 / 입력 형식", expanded=True):
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# (추가) 성별코드 저장(1=남, 2=여). 최초 유효 입력에서 확정
 if "gender_code" not in st.session_state:
     st.session_state.gender_code = None
 
 def try_fix_gender_from_text(text: str):
-    """'이름, 성별번호, 업무번호, 어조번호' 형식에서 성별번호(1/2) 파싱"""
     if st.session_state.gender_code in (1, 2):
         return
-    t = text.replace("，", ",")
-    parts = [p.strip() for p in t.split(",")]
+    parts = [p.strip() for p in text.replace("，", ",").split(",")]
     if len(parts) >= 4 and parts[1].isdigit():
         g = int(parts[1])
         if g in (1, 2):
             st.session_state.gender_code = g
 
-# (추가) 아바타: 사용자=항상 사람, 챗봇=TypeCode/성별 기준
 USER_AVATAR = "🙂"
 
 def pick_assistant_avatar():
-    # 5~8 = 로봇 단일
     if TYPE_CODE in (5, 6, 7, 8):
         return "🤖"
-    # 1~4 = 인간(성별 구분). 성별 미확정 시 남성 얼굴 기본표시.
-    if st.session_state.gender_code == 2:
-        return "👩"
     else:
-        return "🧑"  # 🧑‍💼 → 🧑 변경
+        g = st.session_state.gender_code
+        if g == 2:
+            return "👩"
+        else:
+            return "🧑"
 
-# 과거 대화 출력 (아바타 적용)
 for m in st.session_state.messages:
-    st.chat_message(
-        m["role"],
-        avatar=(USER_AVATAR if m["role"] == "user" else pick_assistant_avatar())
-    ).markdown(m["content"])
+    role = m["role"]
+    avatar = USER_AVATAR if role == "user" else pick_assistant_avatar()
+    st.chat_message(role, avatar=avatar).markdown(m["content"])
 
-# 입력창 (자동 초기화, 세션 직접 조작 불필요)
 user_text = st.chat_input("메시지를 입력하세요")
 
 if user_text:
-    # 사용자 메시지 반영
     st.session_state.messages.append({"role": "user", "content": user_text})
     st.chat_message("user", avatar=USER_AVATAR).markdown(user_text)
-
-    # (추가) 첫 유효 입력에서 성별코드 확정
     try_fix_gender_from_text(user_text)
 
-    # 모델 호출
     try:
         with st.spinner("응답 생성 중..."):
             resp = client.chat.completions.create(
                 model=MODEL,
-                messages=[{"role": "system", "content": SYSTEM_PROMPT}] +
-                         st.session_state.messages,
+                messages=[{"role": "system", "content": SYSTEM_PROMPT}] + st.session_state.messages,
                 temperature=0,
                 timeout=30,
             )
@@ -197,6 +187,5 @@ if user_text:
     except Exception as e:
         reply = f"응답 생성 중 오류가 발생했습니다: {e}"
 
-    # 어시스턴트 출력/저장 (아바타 적용)
     st.session_state.messages.append({"role": "assistant", "content": reply})
     st.chat_message("assistant", avatar=pick_assistant_avatar()).markdown(reply)
