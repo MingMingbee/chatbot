@@ -126,7 +126,7 @@ with st.expander("실험 안내 / 입력 형식", expanded=(ss.profile is None))
     )
 
 chat_box = st.container()
-user_text = st.text_area("메시지를 입력하세요", key="input", height=120)
+user_text = st.text_area("메시지를 입력하세요", key="msg", height=120)
 col1, col2 = st.columns([1,1])
 with col1:
     send = st.button("보내기", type="primary")
@@ -149,8 +149,8 @@ if send and user_text.strip():
     text = user_text.strip()
 
     # ✅ 최신 Streamlit 안전 방식으로 입력창 비우기
-    if "input" in ss:
-        ss.input = ""
+    if "msg" in st.session_state:
+        st.session_state["msg"] = ""
 
     if ss.profile is None:
         parsed = parse_first_input(text)
@@ -196,3 +196,4 @@ if send and user_text.strip():
             ss.chat.append({"role":"user","content": text})
             ss.chat.append({"role":"assistant","content": out})
     st.rerun()
+
