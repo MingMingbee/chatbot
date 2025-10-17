@@ -1,4 +1,4 @@
-# app.py — 원본 유지 + 남성 인간 아바타만 🧑으로 교체
+# app.py — 원본 유지 + 아바타(인간 남/여, 로봇 단일) + 남자 이모지 🧑 적용
 import streamlit as st
 from openai import OpenAI
 
@@ -16,7 +16,7 @@ if TYPE_CODE not in range(1, 9):
 # Secrets
 API_KEY = st.secrets.get("OPENAI_API_KEY", "")
 MODEL   = st.secrets.get("OPENAI_MODEL", "gpt-4o-mini")
-BASE_URL = st.secrets.get("OPENAI_BASE_URL", None)
+BASE_URL = st.secrets.get("OPENAI_BASE_URL", None)  # 공식 OpenAI면 secrets에 넣지 말기
 
 if not API_KEY:
     st.error("Secrets에 OPENAI_API_KEY가 없습니다.")
@@ -24,7 +24,7 @@ if not API_KEY:
 
 client = OpenAI(api_key=API_KEY, base_url=BASE_URL) if BASE_URL else OpenAI(api_key=API_KEY)
 
-# 시스템 프롬프트
+# —— 시스템 프롬프트(사용자 제공 원문 그대로). TypeCode만 주입 ——
 SYSTEM_PROMPT = f"""
 You are an experimental chatbot for research.
 This session applies TypeCode={TYPE_CODE}. (성별/업무/어조=일치/불일치 조합은 백엔드 규칙에 따름)
@@ -106,64 +106,90 @@ Keep all outputs deterministic (temperature=0).
 - Same input → same output. No randomness.
 """
 
-# 안내문
+# —— UI: 안내문(참가자에게 보이는 부분) ——
 st.title("🤖 연구용 실험 챗봇")
 with st.expander("실험 안내 / 입력 형식", expanded=True):
     st.markdown("""
-본 실험은 **챗봇을 활용한 연구**입니다.  
-이름, 성별번호, 업무번호, 어조번호 형식으로 입력하세요.  
-예시: 김수진, 2, 2, 1 / 이민용, 1, 1, 2
+본 실험은 **챗봇을 활용한 연구**입니다. 본격적인 실험을 시작하기에 앞서 간단한 사전 조사를 진행합니다.  
+다음의 안내를 읽고, 채팅창에 정보를 입력해 주세요.  
+
+성별:  
+1) 남성  
+2) 여성  
+
+업무를 진행하는 데 있어서 선호하는 방식:  
+1) 시간이 오래 걸리더라도 세부 사항까지 꼼꼼히 챙기며 진행하는 편  
+2) 빠르게 핵심만 파악하고 신속하게 진행하는 편  
+
+사람들과 대화할 때 더 편안하게 느끼는 어조:  
+1) 격식 있고 공식적인 어조 (형식적·정중한 표현 선호)  
+2) 친근하고 편안한 어조 (일상적인 대화, 부드러운 표현 선호)  
+
+입력 형식:  
+이름, 성별번호, 업무번호, 어조번호  
+
+입력 예시:  
+- 김수진, 2, 2, 1  
+- 이민용, 1, 1, 2
 """)
 
-# 대화 상태
+# —— 대화 상태
 if "messages" not in st.session_state:
     st.session_state.messages = []
+
+# (추가) 성별코드 저장(1=남, 2=여). 최초 유효 입력에서 확정
 if "gender_code" not in st.session_state:
     st.session_state.gender_code = None
 
-# 성별코드 추출
 def try_fix_gender_from_text(text: str):
+    """'이름, 성별번호, 업무번호, 어조번호' 형식에서 성별번호(1/2) 파싱"""
     if st.session_state.gender_code in (1, 2):
         return
-    parts = [p.strip() for p in text.replace("，", ",").split(",")]
+    t = text.replace("，", ",")
+    parts = [p.strip() for p in t.split(",")]
     if len(parts) >= 4 and parts[1].isdigit():
         g = int(parts[1])
         if g in (1, 2):
             st.session_state.gender_code = g
 
-# 사용자 아바타
+# (추가) 아바타: 사용자=항상 사람, 챗봇=TypeCode/성별 기준
 USER_AVATAR = "🙂"
 
-# 챗봇 아바타 선택
 def pick_assistant_avatar():
-    if TYPE_CODE in (5, 6, 7, 8):  # 로봇
+    # 5~8 = 로봇 단일
+    if TYPE_CODE in (5, 6, 7, 8):
         return "🤖"
+    # 1~4 = 인간(성별 구분). 성별 미확정 시 남성 얼굴 기본표시.
+    if st.session_state.gender_code == 2:
+        return "👩"
     else:
-        g = st.session_state.gender_code
-        if g == 2:
-            return "👩"
-        else:
-            return "🧑"
+        return "🧑"  # 🧑‍💼 → 🧑 변경
 
-# 과거 대화 표시
+# 과거 대화 출력 (아바타 적용)
 for m in st.session_state.messages:
-    role = m["role"]
-    avatar = USER_AVATAR if role == "user" else pick_assistant_avatar()
-    st.chat_message(role, avatar=avatar).markdown(m["content"])
+    st.chat_message(
+        m["role"],
+        avatar=(USER_AVATAR if m["role"] == "user" else pick_assistant_avatar())
+    ).markdown(m["content"])
 
-# 입력창
+# 입력창 (자동 초기화, 세션 직접 조작 불필요)
 user_text = st.chat_input("메시지를 입력하세요")
 
 if user_text:
+    # 사용자 메시지 반영
     st.session_state.messages.append({"role": "user", "content": user_text})
     st.chat_message("user", avatar=USER_AVATAR).markdown(user_text)
+
+    # (추가) 첫 유효 입력에서 성별코드 확정
     try_fix_gender_from_text(user_text)
 
+    # 모델 호출
     try:
         with st.spinner("응답 생성 중..."):
             resp = client.chat.completions.create(
                 model=MODEL,
-                messages=[{"role": "system", "content": SYSTEM_PROMPT}] + st.session_state.messages,
+                messages=[{"role": "system", "content": SYSTEM_PROMPT}] +
+                         st.session_state.messages,
                 temperature=0,
                 timeout=30,
             )
@@ -171,5 +197,6 @@ if user_text:
     except Exception as e:
         reply = f"응답 생성 중 오류가 발생했습니다: {e}"
 
+    # 어시스턴트 출력/저장 (아바타 적용)
     st.session_state.messages.append({"role": "assistant", "content": reply})
     st.chat_message("assistant", avatar=pick_assistant_avatar()).markdown(reply)
