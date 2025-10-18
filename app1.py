@@ -1,4 +1,6 @@
 # app1.py — Cloud Run 호환(환경변수 우선), 나머지 로직은 기존 그대로
+import warnings
+warnings.filterwarnings("ignore")
 import os
 import re
 import streamlit as st
@@ -225,3 +227,4 @@ This session applies TypeCode={TYPE_CODE}.
                 render_assistant(style_by_work(reply, bot["work"]))
             except Exception as e:
                 render_assistant(f"응답 생성 중 오류가 발생했습니다: {e}")
+
