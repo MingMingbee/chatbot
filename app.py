@@ -2,7 +2,7 @@
 import warnings
 warnings.filterwarnings("ignore")
 
-# 🔹 추가: Streamlit secrets 경고 완전 차단
+# 🔹 Streamlit secrets 경고 차단
 import logging
 logging.getLogger("streamlit.runtime.secrets").setLevel(logging.ERROR)
 
@@ -43,7 +43,9 @@ def _to_int(x, default):
     try: return int(x)
     except: return default
 
-TYPE_CODE = _to_int(qp.get("type", [None])[0], _to_int(get_conf("BOT_TYPE", 1), 1))
+# ✅ 최신 Streamlit 대응: get()이 문자열을 반환하므로 리스트 인덱싱 제거
+_q = qp.get("type")
+TYPE_CODE = _to_int(_q, _to_int(get_conf("BOT_TYPE", 1), 1))
 if TYPE_CODE not in range(1, 9):
     TYPE_CODE = 1
 
