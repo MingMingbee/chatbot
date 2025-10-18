@@ -1,6 +1,11 @@
 # app1.py — Cloud Run 호환(환경변수 우선), 나머지 로직은 기존 그대로
 import warnings
 warnings.filterwarnings("ignore")
+
+# 🔹 추가: Streamlit secrets 경고 완전 차단
+import logging
+logging.getLogger("streamlit.runtime.secrets").setLevel(logging.ERROR)
+
 import os
 import re
 import streamlit as st
@@ -10,13 +15,18 @@ st.set_page_config(page_title="연구용 실험 챗봇", page_icon="🤖", layou
 
 # ---- Cloud Run에서도 동작하도록: 환경변수 우선 → st.secrets 보조 ----
 def get_conf(key, default=None):
-    val = os.getenv(key, None)
-    if val is not None:
+    # ① 환경변수 우선 (Cloud Run)
+    val = os.getenv(key)
+    if val not in (None, ""):
         return val
-    try:
-        return st.secrets.get(key, default)
-    except Exception:
-        return default
+    # ② 로컬에서만 secrets.toml 사용(파일 있을 때만 접근)
+    secrets_paths = ("/app/.streamlit/secrets.toml", "/root/.streamlit/secrets.toml")
+    if any(os.path.exists(p) for p in secrets_paths):
+        try:
+            return st.secrets.get(key, default)
+        except Exception:
+            pass
+    return default
 
 API_KEY  = get_conf("OPENAI_API_KEY", "")
 MODEL    = get_conf("OPENAI_MODEL", "gpt-4o-mini")
@@ -227,4 +237,3 @@ This session applies TypeCode={TYPE_CODE}.
                 render_assistant(style_by_work(reply, bot["work"]))
             except Exception as e:
                 render_assistant(f"응답 생성 중 오류가 발생했습니다: {e}")
-
