@@ -1,4 +1,7 @@
 # app1.py — 완전 최종본 (안내문 원문 복원 + L8 직교배열 범용 구조)
+import warnings
+warnings.filterwarnings("ignore")
+
 import streamlit as st
 from openai import OpenAI
 import re
@@ -237,3 +240,4 @@ This session applies TypeCode={TYPE_CODE}.
                 render_assistant(style_by_work(reply, bot["work"]))
             except Exception as e:
                 render_assistant(f"응답 생성 중 오류가 발생했습니다: {e}")
+
