@@ -1,13 +1,14 @@
-# app1.py — 완전 최종본 (안내문 원문 복원 + L8 직교배열 범용 구조)
+# app1.py — 완전 최종본 (헤더 문구 제거 + Type별 초기 아이콘 반영)
 import streamlit as st
 from openai import OpenAI
 import re
 
+# -----------------------------
+# 기본 설정
+# -----------------------------
 st.set_page_config(page_title="연구용 실험 챗봇", page_icon="🤖", layout="centered")
 
-# -----------------------------
 # TypeCode: ?type=1..8 > Secrets.BOT_TYPE > 1
-# -----------------------------
 qp = st.query_params
 def _to_int(x, default):
     try: return int(x)
@@ -17,9 +18,7 @@ TYPE_CODE = _to_int(qp.get("type", [None])[0], _to_int(st.secrets.get("BOT_TYPE"
 if TYPE_CODE not in range(1, 9):
     TYPE_CODE = 1
 
-# -----------------------------
 # Secrets / OpenAI
-# -----------------------------
 API_KEY  = st.secrets.get("OPENAI_API_KEY", "")
 MODEL    = st.secrets.get("OPENAI_MODEL", "gpt-4o-mini")
 BASE_URL = st.secrets.get("OPENAI_BASE_URL", None)
@@ -31,7 +30,7 @@ if not API_KEY:
 client = OpenAI(api_key=API_KEY, base_url=BASE_URL) if BASE_URL else OpenAI(api_key=API_KEY)
 
 # -----------------------------
-# L8 직교배열 매핑표
+# L8 매핑표
 # -----------------------------
 MATCH_TABLE = {
     1: {'colleague':'human', 'gender':'match',    'work':'match',    'tone':'match'},
@@ -48,17 +47,21 @@ COND = MATCH_TABLE[TYPE_CODE]
 # -----------------------------
 # UI
 # -----------------------------
-st.title("🤖 연구용 실험 챗봇")
+# Type 1~4 → 사람 아이콘 / 5~8 → 로봇 아이콘
+header_icon = "🧑" if COND["colleague"] == "human" else "🤖"
+st.title(f"{header_icon} 연구용 실험 챗봇")
+
+# 헤더 배지에서 “인간동료 / AI동료” 문구 제거
 st.markdown(
     f"""
 <div style="margin:6px 0 12px 0;">
   <span style="display:inline-block;padding:6px 12px;border-radius:999px;background:#EEF2FF;color:#1E3A8A;font-weight:700;font-size:13px;">
-    Type {TYPE_CODE} · { '인간동료' if COND['colleague']=='human' else 'AI동료' }
+    Type {TYPE_CODE}
   </span>
 </div>
 """, unsafe_allow_html=True)
 
-# ✅ 안내문 원문 복원
+# 안내문 (원문 그대로 유지)
 with st.expander("실험 안내 / 입력 형식", expanded=True):
     st.markdown("""
 본 실험은 **챗봇을 활용한 연구**입니다. 본격적인 실험을 시작하기에 앞서 간단한 사전 조사를 진행합니다.  
