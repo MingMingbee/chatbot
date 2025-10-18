@@ -1,11 +1,8 @@
-# app1.py — 답변 잘림 해결 완전본 (L8 범용 구조 그대로)
+# app1.py — 답변 잘림 최종 해결본 (신속형 잘라내기 제거)
 import streamlit as st
 from openai import OpenAI
 import re
 
-# -----------------------------
-# 기본 설정
-# -----------------------------
 st.set_page_config(page_title="연구용 실험 챗봇", page_icon="🤖", layout="centered")
 
 # TypeCode: ?type=1..8 > Secrets.BOT_TYPE > 1
@@ -18,20 +15,14 @@ TYPE_CODE = _to_int(qp.get("type", [None])[0], _to_int(st.secrets.get("BOT_TYPE"
 if TYPE_CODE not in range(1, 9):
     TYPE_CODE = 1
 
-# Secrets / OpenAI
 API_KEY  = st.secrets.get("OPENAI_API_KEY", "")
 MODEL    = st.secrets.get("OPENAI_MODEL", "gpt-4o-mini")
 BASE_URL = st.secrets.get("OPENAI_BASE_URL", None)
-
 if not API_KEY:
-    st.error("Secrets에 OPENAI_API_KEY가 없습니다.")
-    st.stop()
-
+    st.error("Secrets에 OPENAI_API_KEY가 없습니다."); st.stop()
 client = OpenAI(api_key=API_KEY, base_url=BASE_URL) if BASE_URL else OpenAI(api_key=API_KEY)
 
-# -----------------------------
-# L8 매핑표
-# -----------------------------
+# L8 매핑표(동일)
 MATCH_TABLE = {
     1: {'colleague':'human', 'gender':'match',    'work':'match',    'tone':'match'},
     2: {'colleague':'human', 'gender':'match',    'work':'mismatch', 'tone':'mismatch'},
@@ -44,15 +35,10 @@ MATCH_TABLE = {
 }
 COND = MATCH_TABLE[TYPE_CODE]
 
-# -----------------------------
-# UI
-# -----------------------------
+# UI(헤더에 Type만, 1~4 사람 아이콘 유지)
 header_icon = "🧑" if COND["colleague"] == "human" else "🤖"
 st.title(f"{header_icon} 연구용 실험 챗봇")
-
-# 헤더 배지에서 ‘인간동료/AI동료’ 문구 제거
-st.markdown(
-    f"""
+st.markdown(f"""
 <div style="margin:6px 0 12px 0;">
   <span style="display:inline-block;padding:6px 12px;border-radius:999px;background:#EEF2FF;color:#1E3A8A;font-weight:700;font-size:13px;">
     Type {TYPE_CODE}
@@ -60,7 +46,7 @@ st.markdown(
 </div>
 """, unsafe_allow_html=True)
 
-# 안내문 (원문 그대로)
+# 안내문(원문)
 with st.expander("실험 안내 / 입력 형식", expanded=True):
     st.markdown("""
 본 실험은 **챗봇을 활용한 연구**입니다. 본격적인 실험을 시작하기에 앞서 간단한 사전 조사를 진행합니다.  
@@ -86,16 +72,12 @@ with st.expander("실험 안내 / 입력 형식", expanded=True):
 - 이민용, 1, 1, 2
 """)
 
-# -----------------------------
 # 상태
-# -----------------------------
 if "messages" not in st.session_state: st.session_state.messages = []
 if "profile"  not in st.session_state: st.session_state.profile  = None
 if "bot"      not in st.session_state: st.session_state.bot      = None
 
-# -----------------------------
 # 유틸
-# -----------------------------
 def parse_first_input(text: str):
     parts = [p.strip() for p in text.replace("，", ",").split(",")]
     if len(parts) != 4: return None
@@ -155,17 +137,15 @@ def task2_text(tone):
             "답변: 자유 서술"
         )
 
+# 🔧 여기! 신속형이라도 절대 자르지 않음 (모델 프롬프트로만 간결화 유도)
 def style_by_work(text, work):
-    if work == 1: return text
-    def _trim(p): return p if len(p) <= 120 else p[:120] + "…"
-    return "\n\n".join(_trim(p) for p in text.split("\n\n"))
+    return text
 
-# ✅ 수정 핵심: 답변 잘림 방지용 줄바꿈 처리 정리
+# 출력
 def render_assistant(md_text):
-    # 문단 유지만 적용, 강제 줄바꿈 제거
-    md_text = re.sub(r"\n{2,}", "\n\n", md_text)
+    md_text = re.sub(r"\n{2,}", "\n\n", md_text.strip())
     st.session_state.messages.append({"role":"assistant","content":md_text})
-    st.chat_message("assistant", avatar=assistant_avatar()).markdown(md_text, unsafe_allow_html=True)
+    st.chat_message("assistant", avatar=assistant_avatar()).write(md_text)
 
 def assistant_avatar():
     if COND["colleague"] == "ai": return "🤖"
@@ -174,21 +154,17 @@ def assistant_avatar():
 
 USER_AVATAR = "🙂"
 
-# -----------------------------
 # 과거 메시지 표시
-# -----------------------------
 for m in st.session_state.messages:
     role = m["role"]
-    st.chat_message(role, avatar=(USER_AVATAR if role=="user" else assistant_avatar())).markdown(m["content"])
+    st.chat_message(role, avatar=(USER_AVATAR if role=="user" else assistant_avatar())).write(m["content"])
 
-# -----------------------------
 # 입력
-# -----------------------------
 user_text = st.chat_input("메시지를 입력하세요")
 
 if user_text:
     st.session_state.messages.append({"role":"user","content":user_text})
-    st.chat_message("user", avatar=USER_AVATAR).markdown(user_text)
+    st.chat_message("user", avatar=USER_AVATAR).write(user_text)
 
     if st.session_state.profile is None:
         prof = parse_first_input(user_text)
@@ -234,7 +210,7 @@ This session applies TypeCode={TYPE_CODE}.
                         model=MODEL,
                         messages=[{"role":"system","content":sys_prompt}] + st.session_state.messages,
                         temperature=0,
-                        timeout=30,
+                        timeout=60,
                     )
                 reply = resp.choices[0].message.content or ""
                 render_assistant(style_by_work(reply, bot["work"]))
