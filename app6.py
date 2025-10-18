@@ -1,4 +1,4 @@
-# app1.py — 완전 최종본 (헤더 문구 제거 + Type별 초기 아이콘 반영)
+# app1.py — 답변 잘림 해결 완전본 (L8 범용 구조 그대로)
 import streamlit as st
 from openai import OpenAI
 import re
@@ -47,11 +47,10 @@ COND = MATCH_TABLE[TYPE_CODE]
 # -----------------------------
 # UI
 # -----------------------------
-# Type 1~4 → 사람 아이콘 / 5~8 → 로봇 아이콘
 header_icon = "🧑" if COND["colleague"] == "human" else "🤖"
 st.title(f"{header_icon} 연구용 실험 챗봇")
 
-# 헤더 배지에서 “인간동료 / AI동료” 문구 제거
+# 헤더 배지에서 ‘인간동료/AI동료’ 문구 제거
 st.markdown(
     f"""
 <div style="margin:6px 0 12px 0;">
@@ -61,7 +60,7 @@ st.markdown(
 </div>
 """, unsafe_allow_html=True)
 
-# 안내문 (원문 그대로 유지)
+# 안내문 (원문 그대로)
 with st.expander("실험 안내 / 입력 형식", expanded=True):
     st.markdown("""
 본 실험은 **챗봇을 활용한 연구**입니다. 본격적인 실험을 시작하기에 앞서 간단한 사전 조사를 진행합니다.  
@@ -161,9 +160,10 @@ def style_by_work(text, work):
     def _trim(p): return p if len(p) <= 120 else p[:120] + "…"
     return "\n\n".join(_trim(p) for p in text.split("\n\n"))
 
+# ✅ 수정 핵심: 답변 잘림 방지용 줄바꿈 처리 정리
 def render_assistant(md_text):
+    # 문단 유지만 적용, 강제 줄바꿈 제거
     md_text = re.sub(r"\n{2,}", "\n\n", md_text)
-    md_text = md_text.replace("\n", "  \n")
     st.session_state.messages.append({"role":"assistant","content":md_text})
     st.chat_message("assistant", avatar=assistant_avatar()).markdown(md_text, unsafe_allow_html=True)
 
