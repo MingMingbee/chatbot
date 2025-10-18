@@ -1,4 +1,4 @@
-# app1.py — 최종본 (L8 직교배열: 입력 기반 일치/불일치, Type1용)
+# app1.py — 완전 최종본 (안내문 원문 복원 + L8 직교배열 범용 구조)
 import streamlit as st
 from openai import OpenAI
 import re
@@ -6,25 +6,23 @@ import re
 st.set_page_config(page_title="연구용 실험 챗봇", page_icon="🤖", layout="centered")
 
 # -----------------------------
-# TypeCode 결정: URL ?type=1..8 우선, 없으면 Secrets.BOT_TYPE, 둘 다 없으면 1(app1)
+# TypeCode: ?type=1..8 > Secrets.BOT_TYPE > 1
 # -----------------------------
 qp = st.query_params
 def _to_int(x, default):
-    try:
-        return int(x)
-    except:
-        return default
+    try: return int(x)
+    except: return default
 
 TYPE_CODE = _to_int(qp.get("type", [None])[0], _to_int(st.secrets.get("BOT_TYPE", 1), 1))
 if TYPE_CODE not in range(1, 9):
-    TYPE_CODE = 1  # app1 기본값
+    TYPE_CODE = 1
 
 # -----------------------------
-# Secrets / OpenAI 클라이언트
+# Secrets / OpenAI
 # -----------------------------
 API_KEY  = st.secrets.get("OPENAI_API_KEY", "")
 MODEL    = st.secrets.get("OPENAI_MODEL", "gpt-4o-mini")
-BASE_URL = st.secrets.get("OPENAI_BASE_URL", None)  # 공식 OpenAI면 비워두기
+BASE_URL = st.secrets.get("OPENAI_BASE_URL", None)
 
 if not API_KEY:
     st.error("Secrets에 OPENAI_API_KEY가 없습니다.")
@@ -33,9 +31,7 @@ if not API_KEY:
 client = OpenAI(api_key=API_KEY, base_url=BASE_URL) if BASE_URL else OpenAI(api_key=API_KEY)
 
 # -----------------------------
-# L8 직교배열 매핑표 (성격→어조로 통합)
-# Type 1~4: 인간 동료 / Type 5~8: AI 동료
-# gender/work/tone: match | mismatch (사용자 입력 기반으로 동적 반전/유지)
+# L8 직교배열 매핑표
 # -----------------------------
 MATCH_TABLE = {
     1: {'colleague':'human', 'gender':'match',    'work':'match',    'tone':'match'},
@@ -50,7 +46,7 @@ MATCH_TABLE = {
 COND = MATCH_TABLE[TYPE_CODE]
 
 # -----------------------------
-# UI 헤더
+# UI
 # -----------------------------
 st.title("🤖 연구용 실험 챗봇")
 st.markdown(
@@ -60,75 +56,70 @@ st.markdown(
     Type {TYPE_CODE} · { '인간동료' if COND['colleague']=='human' else 'AI동료' }
   </span>
 </div>
-""",
-    unsafe_allow_html=True,
-)
+""", unsafe_allow_html=True)
 
+# ✅ 안내문 원문 복원
 with st.expander("실험 안내 / 입력 형식", expanded=True):
     st.markdown("""
-첫 메시지로 아래 4가지를 쉼표로 구분하여 입력해 주세요.  
-형식: `이름, 성별번호, 업무번호, 어조번호`
+본 실험은 **챗봇을 활용한 연구**입니다. 본격적인 실험을 시작하기에 앞서 간단한 사전 조사를 진행합니다.  
+다음의 안내를 읽고, 채팅창에 정보를 입력해 주세요.  
 
-- 성별번호: 1(남성), 2(여성)  
-- 업무번호: 1(꼼꼼형), 2(신속형)    ← 이후 답변 길이/전달 방식에 반영  
-- 어조번호: 1(공식형), 2(친근형)  ← 이후 말투에 반영
+성별:  
+1) 남성  
+2) 여성  
 
-예시  
+업무를 진행하는 데 있어서 선호하는 방식:  
+1) 시간이 오래 걸리더라도 세부 사항까지 꼼꼼히 챙기며 진행하는 편  
+2) 빠르게 핵심만 파악하고 신속하게 진행하는 편  
+
+사람들과 대화할 때 더 편안하게 느끼는 어조:  
+1) 격식 있고 공식적인 어조 (형식적·정중한 표현 선호)  
+2) 친근하고 편안한 어조 (일상적인 대화, 부드러운 표현 선호)  
+
+입력 형식:  
+이름, 성별번호, 업무번호, 어조번호  
+
+입력 예시:  
 - 김수진, 2, 2, 1  
 - 이민용, 1, 1, 2
 """)
 
 # -----------------------------
-# 상태 저장
+# 상태
 # -----------------------------
-if "messages" not in st.session_state:
-    st.session_state.messages = []
-if "profile" not in st.session_state:
-    st.session_state.profile = None   # {'name','gender','work','tone'}
-if "bot_persona" not in st.session_state:
-    st.session_state.bot_persona = None  # {'colleague','name','gender','work','tone'}
+if "messages" not in st.session_state: st.session_state.messages = []
+if "profile"  not in st.session_state: st.session_state.profile  = None
+if "bot"      not in st.session_state: st.session_state.bot      = None
 
 # -----------------------------
-# 유틸 함수
+# 유틸
 # -----------------------------
 def parse_first_input(text: str):
     parts = [p.strip() for p in text.replace("，", ",").split(",")]
-    if len(parts) != 4:
-        return None
+    if len(parts) != 4: return None
     name = parts[0]
     try:
         g = int(parts[1]); w = int(parts[2]); t = int(parts[3])
-    except:
-        return None
-    if g not in (1,2) or w not in (1,2) or t not in (1,2):
-        return None
+    except: return None
+    if g not in (1,2) or w not in (1,2) or t not in (1,2): return None
     return {"name": name, "gender": g, "work": w, "tone": t}
 
-def choose_by_match(user_val: int, match_flag: str):
-    if match_flag == "match":
-        return user_val
-    return 2 if user_val == 1 else 1
+def choose_by_match(user_val: int, flag: str):
+    return user_val if flag == "match" else (2 if user_val == 1 else 1)
 
-def build_bot_persona(profile):
-    colleague = COND["colleague"]              # 'human' or 'ai'
-    bot_gender = choose_by_match(profile["gender"], COND["gender"])
-    bot_work   = choose_by_match(profile["work"],   COND["work"])     # 1=꼼꼼, 2=신속
-    bot_tone   = choose_by_match(profile["tone"],   COND["tone"])     # 1=공식, 2=친근
+def build_bot(profile):
+    colleague = COND["colleague"]
+    b_gender  = choose_by_match(profile["gender"], COND["gender"])
+    b_work    = choose_by_match(profile["work"],   COND["work"])
+    b_tone    = choose_by_match(profile["tone"],   COND["tone"])
+    b_name    = ("민준" if b_gender==1 else "서연") if colleague=="human" else ("James" if b_gender==1 else "Julia")
+    return {"colleague": colleague, "name": b_name, "gender": b_gender, "work": b_work, "tone": b_tone}
 
-    # 이름 매핑
-    if colleague == "human":
-        bot_name = "민준" if bot_gender == 1 else "서연"
+def intro_line(user_name, bot):
+    if bot["tone"] == 2:
+        return f"안녕 {user_name}! 반가워. 나는 너를 도와줄 " + ("친구 " if bot["colleague"]=="human" else "AI 비서 ") + f"{bot['name']}야."
     else:
-        bot_name = "James" if bot_gender == 1 else "Julia"
-
-    return {"colleague": colleague, "name": bot_name, "gender": bot_gender, "work": bot_work, "tone": bot_tone}
-
-def tone_prefix(user_name, colleague, tone):
-    # tone: 1=공식, 2=친근
-    if tone == 2:
-        return f"안녕 {user_name}! 반가워. 나는 너를 도와줄 " + ("친구 " if colleague=="human" else "AI 비서 ")
-    else:
-        return f"만나서 반갑습니다. 저는 {user_name} 님을 도와드릴 " + ("동료 " if colleague=="human" else "AI 비서 ")
+        return f"만나서 반갑습니다. 저는 {user_name} 님을 도와드릴 " + ("동료 " if bot["colleague"]=="human" else "AI 비서 ") + f"{bot['name']}입니다."
 
 def task1_text(tone):
     if tone == 2:
@@ -163,107 +154,86 @@ def task2_text(tone):
         )
 
 def style_by_work(text, work):
-    # work: 1=꼼꼼(길고 맥락 포함), 2=신속(핵심 위주)
-    if work == 1:
-        return text
-    # 신속형: 각 문단을 120자 내로 요약(아주 단순한 컷)
-    def _trim_para(p):
-        return p if len(p) <= 120 else p[:120] + "…"
-    return "\n\n".join(_trim_para(p) for p in text.split("\n\n"))
+    if work == 1: return text
+    def _trim(p): return p if len(p) <= 120 else p[:120] + "…"
+    return "\n\n".join(_trim(p) for p in text.split("\n\n"))
 
 def render_assistant(md_text):
-    md_text = re.sub(r"\n{2,}", "\n\n", md_text)  # 단락 유지
-    md_text = md_text.replace("\n", "  \n")       # 일반 줄 강제 줄바꿈
+    md_text = re.sub(r"\n{2,}", "\n\n", md_text)
+    md_text = md_text.replace("\n", "  \n")
     st.session_state.messages.append({"role":"assistant","content":md_text})
     st.chat_message("assistant", avatar=assistant_avatar()).markdown(md_text, unsafe_allow_html=True)
 
 def assistant_avatar():
-    if COND["colleague"] == "ai":
-        return "🤖"
-    bp = st.session_state.bot_persona
-    if not bp:
-        return "🧑"
-    return "👩" if bp["gender"] == 2 else "🧑"
+    if COND["colleague"] == "ai": return "🤖"
+    b = st.session_state.bot
+    return "👩" if (b and b["gender"]==2) else "🧑"
 
 USER_AVATAR = "🙂"
 
-# 과거 메시지 렌더
+# -----------------------------
+# 과거 메시지 표시
+# -----------------------------
 for m in st.session_state.messages:
     role = m["role"]
-    avatar = USER_AVATAR if role == "user" else assistant_avatar()
-    st.chat_message(role, avatar=avatar).markdown(m["content"])
+    st.chat_message(role, avatar=(USER_AVATAR if role=="user" else assistant_avatar())).markdown(m["content"])
 
-# 입력창
+# -----------------------------
+# 입력
+# -----------------------------
 user_text = st.chat_input("메시지를 입력하세요")
 
 if user_text:
     st.session_state.messages.append({"role":"user","content":user_text})
     st.chat_message("user", avatar=USER_AVATAR).markdown(user_text)
 
-    # 1) 첫 입력: 형식 검증 및 봇 페르소나 결정
     if st.session_state.profile is None:
         prof = parse_first_input(user_text)
         if prof is None:
             render_assistant("입력 형식이 올바르지 않습니다")
         else:
             st.session_state.profile = prof
-            st.session_state.bot_persona = build_bot_persona(prof)
+            st.session_state.bot = build_bot(prof)
+            bot = st.session_state.bot
+            first = intro_line(prof["name"], bot) + "\n\n" + task1_text(bot["tone"])
+            render_assistant(style_by_work(first, bot["work"]))
 
-            bp = st.session_state.bot_persona
-            # 인사 + 과제1 제시
-            if bp["tone"] == 2:
-                intro = f"{tone_prefix(prof['name'], bp['colleague'], 2)}{bp['name']}야."
-            else:
-                intro = f"{tone_prefix(prof['name'], bp['colleague'], 1)}{bp['name']}입니다."
-            msg = intro + "\n\n" + task1_text(bp["tone"])
-            render_assistant(style_by_work(msg, bp["work"]))
-
-    # 2) 이후 입력: 자유 처리(형식 검증 없음)
     else:
-        bp = st.session_state.bot_persona
+        bot = st.session_state.bot
+        txt = user_text.strip()
 
-        # (a) 과제1 정답 제출
-        if user_text.strip().startswith("정답:"):
-            msg = (
-                "답안을 제출하셨습니다. 연구자가 확인할 예정입니다. 이어서 다음 과제를 드리겠습니다."
-                if bp["tone"] == 1 else
-                "답안 잘 제출했어. 연구자가 확인할 거야. 이제 다음 과제를 줄게."
-            )
-            out = msg + "\n\n" + task2_text(bp["tone"])
-            render_assistant(style_by_work(out, bp["work"]))
-            return
+        if txt.startswith("정답:"):
+            confirm = ("답안을 제출하셨습니다. 연구자가 확인할 예정입니다. 이어서 다음 과제를 드리겠습니다."
+                       if bot["tone"]==1 else
+                       "답안 잘 제출했어. 연구자가 확인할 거야. 이제 다음 과제를 줄게.")
+            render_assistant(style_by_work(confirm + "\n\n" + task2_text(bot["tone"]), bot["work"]))
 
-        # (b) 과제2 자유서술
-        if user_text.strip().startswith("답변:"):
-            msg = (
-                "답안을 제출하셨습니다. 연구자가 확인할 예정입니다."
-                if bp["tone"] == 1 else
-                "답안 잘 제출했어. 연구자가 확인할 거야."
-            )
-            render_assistant(style_by_work(msg, bp["work"]))
-            return
+        elif txt.startswith("답변:"):
+            confirm = ("답안을 제출하셨습니다. 연구자가 확인할 예정입니다."
+                       if bot["tone"]==1 else
+                       "답안 잘 제출했어. 연구자가 확인할 거야.")
+            render_assistant(style_by_work(confirm, bot["work"]))
 
-        # (c) 일반 질의응답 → OpenAI 호출 (결정론적)
-        sys_prompt = f"""
+        else:
+            sys_prompt = f"""
 You are an experimental chatbot for research.
 This session applies TypeCode={TYPE_CODE}.
 - ColleagueType: {'Human' if COND['colleague']=='human' else 'AI'}
 - Output language: Korean only.
 - Use the following constraints:
-  - tone: {"official" if bp["tone"]==1 else "casual"}
-  - work style: {"detailed (context-rich)" if bp["work"]==1 else "concise (essentials-only)"}
+  - tone: {"official" if bot["tone"]==1 else "casual"}
+  - work style: {"detailed (context-rich)" if bot["work"]==1 else "concise (essentials-only)"}
 - Deterministic outputs (temperature=0). Same input → same output.
-- If user asks meta-questions about the task, briefly answer and continue the conversation.
 """
-        try:
-            with st.spinner("응답 생성 중..."):
-                resp = client.chat.completions.create(
-                    model=MODEL,
-                    messages=[{"role":"system","content":sys_prompt}] + st.session_state.messages,
-                    temperature=0,
-                    timeout=30,
-                )
-            reply = resp.choices[0].message.content or ""
-            render_assistant(style_by_work(reply, bp["work"]))
-        except Exception as e:
-            render_assistant(f"응답 생성 중 오류가 발생했습니다: {e}")
+            try:
+                with st.spinner("응답 생성 중..."):
+                    resp = client.chat.completions.create(
+                        model=MODEL,
+                        messages=[{"role":"system","content":sys_prompt}] + st.session_state.messages,
+                        temperature=0,
+                        timeout=30,
+                    )
+                reply = resp.choices[0].message.content or ""
+                render_assistant(style_by_work(reply, bot["work"]))
+            except Exception as e:
+                render_assistant(f"응답 생성 중 오류가 발생했습니다: {e}")
