@@ -1,4 +1,4 @@
-# app1.py — 답변 잘림 해결 완전본 (L8 범용 구조 그대로)
+# app1.py — 답변 잘림 완전 해결본 (st.write() 적용)
 import streamlit as st
 from openai import OpenAI
 import re
@@ -50,7 +50,6 @@ COND = MATCH_TABLE[TYPE_CODE]
 header_icon = "🧑" if COND["colleague"] == "human" else "🤖"
 st.title(f"{header_icon} 연구용 실험 챗봇")
 
-# 헤더 배지에서 ‘인간동료/AI동료’ 문구 제거
 st.markdown(
     f"""
 <div style="margin:6px 0 12px 0;">
@@ -160,12 +159,11 @@ def style_by_work(text, work):
     def _trim(p): return p if len(p) <= 120 else p[:120] + "…"
     return "\n\n".join(_trim(p) for p in text.split("\n\n"))
 
-# ✅ 수정 핵심: 답변 잘림 방지용 줄바꿈 처리 정리
+# ✅ 핵심 수정: 답변 잘림 방지용 st.write() 적용
 def render_assistant(md_text):
-    # 문단 유지만 적용, 강제 줄바꿈 제거
-    md_text = re.sub(r"\n{2,}", "\n\n", md_text)
+    md_text = re.sub(r"\n{2,}", "\n\n", md_text.strip())
     st.session_state.messages.append({"role":"assistant","content":md_text})
-    st.chat_message("assistant", avatar=assistant_avatar()).markdown(md_text, unsafe_allow_html=True)
+    st.chat_message("assistant", avatar=assistant_avatar()).write(md_text)
 
 def assistant_avatar():
     if COND["colleague"] == "ai": return "🤖"
@@ -179,7 +177,7 @@ USER_AVATAR = "🙂"
 # -----------------------------
 for m in st.session_state.messages:
     role = m["role"]
-    st.chat_message(role, avatar=(USER_AVATAR if role=="user" else assistant_avatar())).markdown(m["content"])
+    st.chat_message(role, avatar=(USER_AVATAR if role=="user" else assistant_avatar())).write(m["content"])
 
 # -----------------------------
 # 입력
@@ -188,7 +186,7 @@ user_text = st.chat_input("메시지를 입력하세요")
 
 if user_text:
     st.session_state.messages.append({"role":"user","content":user_text})
-    st.chat_message("user", avatar=USER_AVATAR).markdown(user_text)
+    st.chat_message("user", avatar=USER_AVATAR).write(user_text)
 
     if st.session_state.profile is None:
         prof = parse_first_input(user_text)
@@ -234,7 +232,7 @@ This session applies TypeCode={TYPE_CODE}.
                         model=MODEL,
                         messages=[{"role":"system","content":sys_prompt}] + st.session_state.messages,
                         temperature=0,
-                        timeout=30,
+                        timeout=60,  # ↑ 30→60초로 확장 (긴 답변 방지)
                     )
                 reply = resp.choices[0].message.content or ""
                 render_assistant(style_by_work(reply, bot["work"]))
