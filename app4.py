@@ -1,9 +1,31 @@
-# app1.py — 답변 잘림 최종 해결본 (신속형 잘라내기 제거)
+# app1.py — Cloud Run 호환(환경변수 우선), 나머지 로직은 기존 그대로
+import warnings
+warnings.filterwarnings("ignore")
+import os
+import re
 import streamlit as st
 from openai import OpenAI
-import re
 
 st.set_page_config(page_title="연구용 실험 챗봇", page_icon="🤖", layout="centered")
+
+# ---- Cloud Run에서도 동작하도록: 환경변수 우선 → st.secrets 보조 ----
+def get_conf(key, default=None):
+    val = os.getenv(key, None)
+    if val is not None:
+        return val
+    try:
+        return st.secrets.get(key, default)
+    except Exception:
+        return default
+
+API_KEY  = get_conf("OPENAI_API_KEY", "")
+MODEL    = get_conf("OPENAI_MODEL", "gpt-4o-mini")
+BASE_URL = get_conf("OPENAI_BASE_URL", None)
+
+if not API_KEY:
+    st.error("OPENAI_API_KEY가 설정되지 않았습니다."); st.stop()
+
+client = OpenAI(api_key=API_KEY, base_url=BASE_URL) if BASE_URL else OpenAI(api_key=API_KEY)
 
 # TypeCode: ?type=1..8 > Secrets.BOT_TYPE > 1
 qp = st.query_params
@@ -11,16 +33,9 @@ def _to_int(x, default):
     try: return int(x)
     except: return default
 
-TYPE_CODE = _to_int(qp.get("type", [None])[0], _to_int(st.secrets.get("BOT_TYPE", 1), 1))
+TYPE_CODE = _to_int(qp.get("type", [None])[0], _to_int(get_conf("BOT_TYPE", 1), 1))
 if TYPE_CODE not in range(1, 9):
     TYPE_CODE = 1
-
-API_KEY  = st.secrets.get("OPENAI_API_KEY", "")
-MODEL    = st.secrets.get("OPENAI_MODEL", "gpt-4o-mini")
-BASE_URL = st.secrets.get("OPENAI_BASE_URL", None)
-if not API_KEY:
-    st.error("Secrets에 OPENAI_API_KEY가 없습니다."); st.stop()
-client = OpenAI(api_key=API_KEY, base_url=BASE_URL) if BASE_URL else OpenAI(api_key=API_KEY)
 
 # L8 매핑표(동일)
 MATCH_TABLE = {
@@ -46,7 +61,7 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-# 안내문(원문)
+# 안내문
 with st.expander("실험 안내 / 입력 형식", expanded=True):
     st.markdown("""
 본 실험은 **챗봇을 활용한 연구**입니다. 본격적인 실험을 시작하기에 앞서 간단한 사전 조사를 진행합니다.  
@@ -61,8 +76,8 @@ with st.expander("실험 안내 / 입력 형식", expanded=True):
 2) 빠르게 핵심만 파악하고 신속하게 진행하는 편  
 
 사람들과 대화할 때 더 편안하게 느끼는 어조:  
-1) 격식 있고 공식적인 어조 (형식적·정중한 표현 선호)  
-2) 친근하고 편안한 어조 (일상적인 대화, 부드러운 표현 선호)  
+1) 격식 있고 공식적인 어조  
+2) 친근하고 편안한 어조  
 
 입력 형식:  
 이름, 성별번호, 업무번호, 어조번호  
@@ -137,11 +152,9 @@ def task2_text(tone):
             "답변: 자유 서술"
         )
 
-# 🔧 여기! 신속형이라도 절대 자르지 않음 (모델 프롬프트로만 간결화 유도)
 def style_by_work(text, work):
-    return text
+    return text  # 신속형이라도 자르지 않음
 
-# 출력
 def render_assistant(md_text):
     md_text = re.sub(r"\n{2,}", "\n\n", md_text.strip())
     st.session_state.messages.append({"role":"assistant","content":md_text})
@@ -176,7 +189,6 @@ if user_text:
             bot = st.session_state.bot
             first = intro_line(prof["name"], bot) + "\n\n" + task1_text(bot["tone"])
             render_assistant(style_by_work(first, bot["work"]))
-
     else:
         bot = st.session_state.bot
         txt = user_text.strip()
@@ -199,7 +211,7 @@ You are an experimental chatbot for research.
 This session applies TypeCode={TYPE_CODE}.
 - ColleagueType: {'Human' if COND['colleague']=='human' else 'AI'}
 - Output language: Korean only.
-- Use the following constraints:
+- Constraints:
   - tone: {"official" if bot["tone"]==1 else "casual"}
   - work style: {"detailed (context-rich)" if bot["work"]==1 else "concise (essentials-only)"}
 - Deterministic outputs (temperature=0). Same input → same output.
@@ -210,9 +222,10 @@ This session applies TypeCode={TYPE_CODE}.
                         model=MODEL,
                         messages=[{"role":"system","content":sys_prompt}] + st.session_state.messages,
                         temperature=0,
-                        timeout=60,
                     )
                 reply = resp.choices[0].message.content or ""
                 render_assistant(style_by_work(reply, bot["work"]))
             except Exception as e:
                 render_assistant(f"응답 생성 중 오류가 발생했습니다: {e}")
+
+
