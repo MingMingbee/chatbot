@@ -5,4 +5,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 ENV PORT=8080
 EXPOSE 8080
-CMD ["bash","-lc","streamlit run app1.py --server.address=0.0.0.0 --server.port ${PORT}"]
+CMD ["bash", "-c", "streamlit run app${BOT_TYPE:-1}.py --server.address=0.0.0.0 --server.port ${PORT}"]
