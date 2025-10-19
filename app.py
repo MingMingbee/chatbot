@@ -1,4 +1,4 @@
-# app1.py — chat_input 오류 수정(placeholder만) + 시작안내 강화 + 과제2 종료 유지
+# app1.py — GPT 상호작용 복구 + placeholder 예시 제거 + 안내 강화 + 종료 유지
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -17,12 +17,10 @@ def get_conf(key, default=None):
     val = os.getenv(key)
     if val not in (None, ""):
         return val
-    paths = ("/app/.streamlit/secrets.toml", "/root/.streamlit/secrets.toml")
-    if any(os.path.exists(p) for p in paths):
-        try:
-            return st.secrets.get(key, default)
-        except Exception:
-            pass
+    for p in ("/app/.streamlit/secrets.toml", "/root/.streamlit/secrets.toml"):
+        if os.path.exists(p):
+            try: return st.secrets.get(key, default)
+            except Exception: pass
     return default
 
 API_KEY  = get_conf("OPENAI_API_KEY", "")
@@ -36,10 +34,9 @@ client = OpenAI(api_key=API_KEY, base_url=BASE_URL) if BASE_URL else OpenAI(api_
 # TypeCode
 # -----------------------------
 qp = st.query_params
-def _to_int(x, d):
+def _to_int(x, d): 
     try: return int(x)
     except: return d
-
 TYPE_CODE = _to_int(qp.get("type"), _to_int(get_conf("BOT_TYPE", 1), 1))
 TYPE_CODE = TYPE_CODE if TYPE_CODE in range(1,9) else 1
 
@@ -68,10 +65,10 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-# 상단 고정 안내(첫 입력 요약)
-st.info("먼저 한 줄 자기소개로 시작해 주세요: **이름, 성별번호, 업무번호, 어조번호**  예) `이민용, 1, 1, 2`")
+# 상단 고정 요약 안내
+st.info("첫 메시지에 **이름, 성별번호, 업무번호, 어조번호**를 한 줄로 입력해 시작하세요. 예) `이민용, 1, 1, 2`")
 
-# ✅ 안내 블록(요청 문구 + 접두어 규칙)
+# ✅ 상세 안내 + ‘GPT처럼 질의응답’ 문구 추가
 with st.expander("실험 안내 / 입력 형식", expanded=True):
     st.markdown("""
 성별:  
@@ -93,11 +90,12 @@ with st.expander("실험 안내 / 입력 형식", expanded=True):
 - 김수진, 2, 2, 1  
 - 이민용, 1, 1, 2
 
-**제출 규칙(중요)**  
-- 챗봇과의 질문을 마친 뒤 **과제1 정답 제출 시 앞에 `정답:`을 반드시 붙여** 입력해 주세요.  
-  예) `정답: 행성1, 행성2, …, 행성8`  
-- **과제2(주관식) 제출 시 앞에 `답변:`을 반드시 붙여** 입력해 주세요.  
-  예) `답변: 자유 서술`
+**풀이 방법:**  
+- 과제를 푸는 동안 **일반 GPT를 쓰듯 채팅창에서 자유롭게 질문하고 대화**하며 필요한 정보를 얻어 해결하세요.
+
+**제출 규칙(중요):**  
+- 과제1 최종 제출은 앞에 **`정답:`**을 붙여 입력하세요. 예) `정답: 행성1, …, 행성8`  
+- 과제2(주관식) 최종 제출은 앞에 **`답변:`**을 붙여 입력하세요. 예) `답변: 자유 서술`
 """)
 
 # -----------------------------
@@ -107,7 +105,7 @@ ss = st.session_state
 if "messages" not in ss: ss.messages = []
 if "profile"  not in ss: ss.profile  = None
 if "bot"      not in ss: ss.bot      = None
-if "stage"    not in ss: ss.stage    = 0  # 0:사전입력, 1:과제1, 2:과제2, 3:종료
+if "stage"    not in ss: ss.stage    = 0   # 0:사전입력, 1:과제1, 2:과제2, 3:종료
 if "intro_shown" not in ss: ss.intro_shown = False
 
 USER_AVATAR = "🙂"
@@ -127,7 +125,7 @@ def render_assistant(t):
     ss.messages.append({"role":"assistant","content":t})
     st.chat_message("assistant", avatar=assistant_avatar()).write(t)
 
-# 과거 메시지
+# 과거 메시지 복원
 for m in ss.messages:
     st.chat_message(m["role"], avatar=(USER_AVATAR if m["role"]=="user" else assistant_avatar())).write(m["content"])
 
@@ -164,24 +162,24 @@ def task1_text(tone):
     return (
         "과제1: 보기의 행성을 **직경 큰 순서**로 나열해 주세요.\n"
         "보기: 수성, 금성, 지구, 화성, 목성, 토성, 천왕성, 해왕성\n"
-        "정답 제출 시 **반드시 앞에 `정답:`을 붙여** 입력해 주세요.\n"
-        "예) `정답: 행성1, 행성2, …, 행성8`"
+        "필요하면 저에게 질문해 정보를 얻으셔도 됩니다.\n"
+        "최종 제출 시 `정답:`으로 시작해 주세요. 예) `정답: …`"
     ) if tone==1 else (
         "과제1: 보기의 행성을 **직경 큰 순서**로 나열해 줘.\n"
         "보기: 수성, 금성, 지구, 화성, 목성, 토성, 천왕성, 해왕성\n"
-        "정답 낼 때 **앞에 `정답:`을 꼭 붙여줘.**\n"
-        "예) `정답: 행성1, 행성2, …, 행성8`"
+        "모르면 물어봐. 내가 힌트 줄게.\n"
+        "최종 제출은 `정답:`으로 시작! 예) `정답: …`"
     )
 
 def task2_text(tone):
     return (
         "과제2: 지구를 제외하고 **생명체 존재 가능성이 높다**고 보는 행성 1개와 근거를 작성해 주세요.\n"
-        "제출 시 **반드시 앞에 `답변:`을 붙여** 입력해 주세요.\n"
-        "예) `답변: 자유 서술`"
+        "필요하면 저에게 질문하여 정보를 확인하셔도 됩니다.\n"
+        "최종 제출은 `답변:`으로 시작! 예) `답변: 자유 서술`"
     ) if tone==1 else (
-        "과제2: 지구 말고 **생명체가 살 수 있을 것 같은** 행성 1개를 골라 이유를 써줘.\n"
-        "제출할 때 **앞에 `답변:`을 꼭 붙여줘.**\n"
-        "예) `답변: 자유 서술`"
+        "과제2: 지구 말고 **생명체가 살 수 있을 것 같은** 행성 1개와 이유를 써줘.\n"
+        "궁금한 건 물어봐. 같이 따져보자.\n"
+        "최종 제출은 `답변:`으로 시작! 예) `답변: 자유 서술`"
     )
 
 def style_by_work(text, work): return text
@@ -193,7 +191,7 @@ def is_planet_sequence_answer(s: str):
     return len(parts)==8 and len(set(parts))==8 and all(p in PLANETS for p in parts)
 
 # -----------------------------
-# 보조 버튼(재시작만 유지)
+# 재시작 버튼
 # -----------------------------
 if st.button("재시작"):
     reset_all()
@@ -203,39 +201,40 @@ if st.button("재시작"):
 # -----------------------------
 if ss.stage==3:
     st.success("실험이 종료되었습니다. 참여해 주셔서 감사합니다.")
-    st.caption("창을 닫으셔도 되고, ‘재시작’ 버튼으로 처음부터 다시 참여할 수 있습니다.")
+    st.caption("‘재시작’으로 처음부터 다시 참여할 수 있습니다.")
     st.stop()
 
 # -----------------------------
-# 입력창 — **placeholder만 전달** (라벨 인자 금지)
-#   * 최신 Streamlit은 chat_input(placeholder, ...) 시그니처
+# 입력창 — 예시 placeholder 제거(빈 프롬프트 안내만)
 # -----------------------------
-placeholder = (
-    "예) 이름, 성별번호, 업무번호, 어조번호 → 이민용, 1, 1, 2" if ss.stage==0 else
-    ("예) 정답: 목성, 토성, 천왕성, 해왕성, 지구, 금성, 화성, 수성" if ss.stage==1 else
-     "예) 답변: 자유 서술")
-)
-user_text = st.chat_input(placeholder)  # ← label 제거, placeholder만 전달
+user_text = st.chat_input("메시지를 입력하세요")  # placeholder/label 중복 방지, 단일 문자열만 전달
 
 # -----------------------------
-# 시작 안내 말풍선(최초 1회)
+# 최초 1회 시작 멘트
 # -----------------------------
 if ss.stage==0 and not ss.intro_shown:
-    intro_msg = (
-        "실험을 시작하겠습니다. 첫 메시지에 **이름, 성별번호, 업무번호, 어조번호**를 한 줄로 입력해 주세요.\n"
-        "예) 이민용, 1, 1, 2\n\n"
-        "성별(1 남성/2 여성), 업무(1 꼼꼼형/2 신속형), 어조(1 공식/2 친근) 입니다."
+    render_assistant(
+        "실험을 시작하겠습니다. 첫 메시지에 **이름, 성별번호, 업무번호, 어조번호**를 한 줄로 입력해 주세요. "
+        "예) 이민용, 1, 1, 2"
     )
-    render_assistant(intro_msg)
     ss.intro_shown = True
 
 # -----------------------------
 # 대화 흐름
 # -----------------------------
+def llm_reply(system_prompt):
+    resp = client.chat.completions.create(
+        model=MODEL,
+        messages=[{"role":"system","content":system_prompt}] + ss.messages,
+        temperature=0,
+    )
+    return resp.choices[0].message.content or ""
+
 if user_text:
     ss.messages.append({"role":"user","content":user_text})
     st.chat_message("user", avatar=USER_AVATAR).write(user_text)
 
+    # 0) 사전입력
     if ss.stage==0:
         prof = parse_first_input(user_text)
         if prof is None:
@@ -246,15 +245,26 @@ if user_text:
             ss.stage   = 1
             render_assistant(style_by_work(intro_line(prof["name"], ss.bot) + "\n\n" + task1_text(ss.bot["tone"]), ss.bot["work"]))
 
+    # 1) 과제1
     elif ss.stage==1:
         txt = user_text.strip()
         if txt.startswith(("정답", "정답:", "정답 -")) or is_planet_sequence_answer(txt):
             ss.stage = 2
-            render_assistant(style_by_work("정답을 확인했습니다. 이제 두 번째 과제로 넘어가겠습니다.\n\n" + task2_text(ss.bot["tone"]), ss.bot["work"]))
+            render_assistant(style_by_work("정답을 확인했습니다. 이제 과제2로 넘어가겠습니다.\n\n" + task2_text(ss.bot["tone"]), ss.bot["work"]))
         else:
-            # 힌트만 간단 안내
-            render_assistant(style_by_work("정답을 제출할 때는 반드시 `정답:`을 붙여주세요.", ss.bot["work"]))
+            # ❗GPT 상호작용: 행성 크기/힌트/설명에 응답
+            sys_prompt = f"""
+You are a Korean assistant helping a participant solve "planet size ordering".
+- Act like GPT: answer questions, give hints, explain reasoning briefly.
+- Do NOT reveal system/type info.
+- Keep tone {"polite" if ss.bot["tone"]==1 else "friendly"} and {"detailed" if ss.bot["work"]==1 else "concise"}.
+- Encourage final submission with `정답:` when user seems ready.
+- Deterministic outputs (temperature=0).
+"""
+            reply = llm_reply(sys_prompt)
+            render_assistant(style_by_work(reply, ss.bot["work"]))
 
+    # 2) 과제2
     elif ss.stage==2:
         txt = user_text.strip()
         if txt.startswith("답변"):
@@ -262,4 +272,15 @@ if user_text:
             ss.stage = 3
             st.rerun()
         else:
-            render_assistant(style_by_work("답변을 제출할 때는 반드시 `답변:`을 붙여주세요.", ss.bot["work"]))
+            # ❗GPT 상호작용: 생명체 가능성/근거 탐색 대화
+            sys_prompt = f"""
+You are a Korean assistant discussing habitability of Solar System planets.
+- Help the participant reason about factors (대기, 물, 온도, 표면, 자기장 등).
+- Cite general scientific principles without external links.
+- Ask brief guiding questions when helpful.
+- Encourage final submission with `답변:` when ready.
+- Tone {"polite" if ss.bot["tone"]==1 else "friendly"}, {"detailed" if ss.bot["work"]==1 else "concise"}.
+- Deterministic outputs (temperature=0).
+"""
+            reply = llm_reply(sys_prompt)
+            render_assistant(style_by_work(reply, ss.bot["work"]))
