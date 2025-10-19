@@ -1,4 +1,4 @@
-# app1.py — 과제2 종료 처리(입력창 숨김 + 종료 안내 + 재시작)
+# app1.py — '정답:/답변:' 접두어 강조 + 과제2 종료 처리
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -11,7 +11,7 @@ from openai import OpenAI
 st.set_page_config(page_title="연구용 실험 챗봇", page_icon="🤖", layout="centered")
 
 # -----------------------------
-# 설정 로드: ENV 우선 → secrets 보조
+# 설정(ENV 우선 → secrets 보조)
 # -----------------------------
 def get_conf(key, default=None):
     val = os.getenv(key)
@@ -25,7 +25,7 @@ def get_conf(key, default=None):
             pass
     return default
 
-API_KEY  = get_conf("OPENAI_API_KEY", "")
+API_KEY  = get_conf("OPENAI_OPENAI_API_KEY", None) or get_conf("OPENAI_API_KEY", "")
 MODEL    = get_conf("OPENAI_MODEL", "gpt-4o-mini")
 BASE_URL = get_conf("OPENAI_BASE_URL", None)
 if not API_KEY:
@@ -36,28 +36,29 @@ client = OpenAI(api_key=API_KEY, base_url=BASE_URL) if BASE_URL else OpenAI(api_
 # TypeCode
 # -----------------------------
 qp = st.query_params
-def _to_int(x, default):
+def _to_int(x, d): 
     try: return int(x)
-    except: return default
+    except: return d
+
 TYPE_CODE = _to_int(qp.get("type"), _to_int(get_conf("BOT_TYPE", 1), 1))
 TYPE_CODE = TYPE_CODE if TYPE_CODE in range(1,9) else 1
 
 MATCH_TABLE = {
-    1: {'colleague':'human', 'gender':'match',    'work':'match',    'tone':'match'},
-    2: {'colleague':'human', 'gender':'match',    'work':'mismatch', 'tone':'mismatch'},
-    3: {'colleague':'human', 'gender':'mismatch', 'work':'match',    'tone':'mismatch'},
-    4: {'colleague':'human', 'gender':'mismatch', 'work':'mismatch', 'tone':'match'},
-    5: {'colleague':'ai',    'gender':'match',    'work':'match',    'tone':'mismatch'},
-    6: {'colleague':'ai',    'gender':'match',    'work':'mismatch', 'tone':'match'},
-    7: {'colleague':'ai',    'gender':'mismatch', 'work':'match',    'tone':'match'},
-    8: {'colleague':'ai',    'gender':'mismatch', 'work':'mismatch', 'tone':'mismatch'},
+    1:{'colleague':'human','gender':'match','work':'match','tone':'match'},
+    2:{'colleague':'human','gender':'match','work':'mismatch','tone':'mismatch'},
+    3:{'colleague':'human','gender':'mismatch','work':'match','tone':'mismatch'},
+    4:{'colleague':'human','gender':'mismatch','work':'mismatch','tone':'match'},
+    5:{'colleague':'ai','gender':'match','work':'match','tone':'mismatch'},
+    6:{'colleague':'ai','gender':'match','work':'mismatch','tone':'match'},
+    7:{'colleague':'ai','gender':'mismatch','work':'match','tone':'match'},
+    8:{'colleague':'ai','gender':'mismatch','work':'mismatch','tone':'mismatch'},
 }
 COND = MATCH_TABLE[TYPE_CODE]
 
 # -----------------------------
 # UI 헤더
 # -----------------------------
-header_icon = "🧑" if COND["colleague"] == "human" else "🤖"
+header_icon = "🧑" if COND["colleague"]=="human" else "🤖"
 st.title(f"{header_icon} 연구용 실험 챗봇")
 st.markdown(f"""
 <div style="margin:6px 0 12px 0;">
@@ -67,7 +68,7 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-# ✅ 안내 블록(사용자 요청 문구 그대로)
+# ✅ 안내 블록(요청 문구 + 접두어 규칙 명시)
 with st.expander("실험 안내 / 입력 형식", expanded=True):
     st.markdown("""
 성별:  
@@ -88,6 +89,12 @@ with st.expander("실험 안내 / 입력 형식", expanded=True):
 입력 예시:  
 - 김수진, 2, 2, 1  
 - 이민용, 1, 1, 2
+
+**제출 규칙(매우 중요):**  
+- 챗봇과의 질문을 모두 마친 후 **과제1 정답을 제출할 때는 반드시 앞에 `정답:`을 쓰고 답을 입력**해 주세요.  
+  예) `정답: 행성1, 행성2, …, 행성8`  
+- **과제2(주관식)도 반드시 앞에 `답변:`을 쓰고 내용을 입력**해 주세요.  
+  예) `답변: 자유 서술`
 """)
 
 # -----------------------------
@@ -98,24 +105,22 @@ if "messages" not in ss: ss.messages = []
 if "profile"  not in ss: ss.profile  = None
 if "bot"      not in ss: ss.bot      = None
 if "stage"    not in ss: ss.stage    = 0  # 0:사전입력, 1:과제1, 2:과제2, 3:종료
+USER_AVATAR = "🙂"
 
 def reset_all():
     for k in ("messages","profile","bot","stage","_prefill"):
         if k in ss: del ss[k]
     st.rerun()
 
-USER_AVATAR = "🙂"
-
 def assistant_avatar():
-    if COND["colleague"] == "ai": return "🤖"
+    if COND["colleague"]=="ai": return "🤖"
     b = ss.bot
     return "👩" if (b and b["gender"]==2) else "🧑"
 
-def render_assistant(text):
-    import re as _re
-    text = _re.sub(r"\n{2,}", "\n\n", text.strip())
-    ss.messages.append({"role":"assistant","content":text})
-    st.chat_message("assistant", avatar=assistant_avatar()).write(text)
+def render_assistant(t):
+    t = re.sub(r"\n{2,}", "\n\n", t.strip())
+    ss.messages.append({"role":"assistant","content":t})
+    st.chat_message("assistant", avatar=assistant_avatar()).write(t)
 
 # 과거 메시지
 for m in ss.messages:
@@ -135,7 +140,7 @@ def parse_first_input(text: str):
     return {"name": name, "gender": g, "work": w, "tone": t}
 
 def choose_by_match(user_val: int, flag: str):
-    return user_val if flag == "match" else (2 if user_val == 1 else 1)
+    return user_val if flag=="match" else (2 if user_val==1 else 1)
 
 def build_bot(profile):
     colleague = COND["colleague"]
@@ -154,26 +159,34 @@ def intro_line(user_name, bot):
             )
 
 def task1_text(tone):
-    return (
-        "과제1: 다음 태양계 행성들을 **직경이 큰 순서**로 나열해 주세요.\n"
-        "보기: 수성, 금성, 지구, 화성, 목성, 토성, 천왕성, 해왕성\n"
-        "제출 형식: `정답: 행성1, 행성2, …, 행성8`"
-    ) if tone==1 else (
-        "과제1: 보기의 행성을 **직경 큰 순서**로 나열해 줘.\n"
-        "보기: 수성, 금성, 지구, 화성, 목성, 토성, 천왕성, 해왕성\n"
-        "제출 형식: `정답: 행성1, 행성2, …, 행성8`"
-    )
+    if tone==2:
+        return (
+            "과제1: 보기의 행성을 **직경 큰 순서**로 나열해 줘.\n"
+            "보기: 수성, 금성, 지구, 화성, 목성, 토성, 천왕성, 해왕성\n"
+            "모든 질문을 마친 뒤 **정답을 제출할 때는 반드시 앞에 `정답:`을 쓰고** 입력해 줘.\n"
+            "예) `정답: 행성1, 행성2, …, 행성8`"
+        )
+    else:
+        return (
+            "과제1: 다음 행성들을 **직경이 큰 순서**로 나열해 주십시오.\n"
+            "보기: 수성, 금성, 지구, 화성, 목성, 토성, 천왕성, 해왕성\n"
+            "모든 질의응답을 마친 뒤 **정답 제출 시 반드시 앞에 `정답:`을 쓰고** 입력해 주십시오.\n"
+            "예)  `정답: 행성1, 행성2, …, 행성8`"
+        )
 
 def task2_text(tone):
-    return (
-        "과제2: 지구를 제외하고 **생명체 존재 가능성이 높다**고 보는 행성 1개와 근거를 작성해 주십시오.\n"
-        "제출 형식: `답변: 자유 서술`"
-    ) if tone==1 else (
-        "과제2: 지구 말고 **생명체가 살 수 있을 것 같은** 행성 1개를 고르고, 이유를 써줘.\n"
-        "제출 형식: `답변: 자유 서술`"
-    )
+    if tone==2:
+        return (
+            "과제2: 지구 말고 **생명체가 살 수 있을 것 같은** 행성 1개와 이유를 자유롭게 써줘.\n"
+            "제출할 때는 **반드시 앞에 `답변:`을 쓰고** 입력해 줘. 예) `답변: 자유 서술`"
+        )
+    else:
+        return (
+            "과제2: 지구를 제외하고 **생명체 존재 가능성이 높다**고 보는 행성 1개와 근거를 작성해 주십시오.\n"
+            "제출 시 **반드시 앞에 `답변:`을 쓰고** 입력해 주십시오. 예) `답변: 자유 서술`"
+        )
 
-def style_by_work(text, work):  # 신속형도 내용은 유지
+def style_by_work(text, work):
     return text
 
 PLANETS = ["수성","금성","지구","화성","목성","토성","천왕성","해왕성"]
@@ -186,43 +199,38 @@ def is_planet_sequence_answer(s: str) -> bool:
     return all(p in PLANETS for p in parts)
 
 # -----------------------------
-# 진행 보조/재시작 UI
+# 진행 보조/재시작
 # -----------------------------
-top_cols = st.columns([1,1,1])
-with top_cols[0]:
-    if ss.stage == 0 and st.button("사전입력 예시 붙여넣기"):
+cols = st.columns([1,1,1])
+with cols[0]:
+    if ss.stage==0 and st.button("사전입력 예시 붙여넣기"):
         ss["_prefill"] = "이민용, 1, 1, 2"
-with top_cols[1]:
-    if ss.stage == 1 and st.button("다음 과제로 넘어가기"):
+with cols[1]:
+    if ss.stage==1 and st.button("다음 과제로 넘어가기"):
         ss.stage = 2
         render_assistant(style_by_work(task2_text(ss.bot["tone"]), ss.bot["work"]))
-with top_cols[2]:
+with cols[2]:
     if st.button("재시작"):
         reset_all()
 
-# -----------------------------
-# 종료 상태면 안내 띄우고 입력창 숨김
-# -----------------------------
-if ss.stage == 3:
+# 종료 시 입력창 숨김
+if ss.stage==3:
     st.success("실험이 종료되었습니다. 참여해 주셔서 감사합니다.")
-    st.caption("이 창을 닫으셔도 되고, 위의 ‘재시작’ 버튼으로 처음부터 다시 참여할 수 있습니다.")
+    st.caption("창을 닫아도 좋고, ‘재시작’ 버튼으로 처음부터 다시 참여할 수 있습니다.")
     st.stop()
 
-# -----------------------------
-# 입력창(종료 상태가 아니어야 노출)
-# -----------------------------
 default_prompt = ss.pop("_prefill", None)
 user_text = st.chat_input("메시지를 입력하세요", value=default_prompt if default_prompt else "")
 
 # -----------------------------
-# 대화 흐름(단계 기반)
+# 대화 흐름
 # -----------------------------
 if user_text:
     ss.messages.append({"role":"user","content":user_text})
     st.chat_message("user", avatar=USER_AVATAR).write(user_text)
 
     # 0) 사전입력
-    if ss.stage == 0:
+    if ss.stage==0:
         prof = parse_first_input(user_text)
         if prof is None:
             render_assistant("입력 형식이 올바르지 않습니다.\n예) 김수진, 2, 2, 1  /  이민용, 1, 1, 2")
@@ -230,11 +238,11 @@ if user_text:
             ss.profile = prof
             ss.bot     = build_bot(prof)
             ss.stage   = 1
-            first = intro_line(prof["name"], ss.bot) + "\n\n" + task1_text(ss.bot["tone"])
-            render_assistant(style_by_work(first, ss.bot["work"]))
+            greet = intro_line(prof["name"], ss.bot)
+            render_assistant(style_by_work(greet + "\n\n" + task1_text(ss.bot["tone"]), ss.bot["work"]))
 
     # 1) 과제1
-    elif ss.stage == 1:
+    elif ss.stage==1:
         txt = user_text.strip()
         if txt.startswith(("정답", "정답:", "정답 -")) or is_planet_sequence_answer(txt):
             tip = ""
@@ -248,7 +256,7 @@ if user_text:
             ss.stage = 2
             render_assistant(style_by_work(confirm + tip + "\n\n" + task2_text(ss.bot["tone"]), ss.bot["work"]))
         else:
-            # 힌트/질문 응답
+            # 일반 Q&A — 접두어 규칙 상기
             sys_prompt = f"""
 You are an experimental chatbot for research.
 Session TypeCode={TYPE_CODE}. (사용자 노출 금지)
@@ -257,8 +265,8 @@ Output: Korean only. Deterministic (temperature=0).
 - Tone: {"official/polite" if ss.bot["tone"]==1 else "casual/friendly"}
 - Work style: {"detailed (context-rich)" if ss.bot["work"]==1 else "concise (essentials-only)"}
 Rules:
-1) 과제 완수를 돕는 범위에서 명확하게 답하라.
-2) 제출 형식(정답:/답변:)을 가볍게 상기시켜라.
+1) 과제 완수를 돕는 범위에서 명확히 답하라.
+2) 참가자가 제출할 때 **반드시 '정답:' 접두어를 쓰도록** 짧게 상기시켜라.
 3) 불확실하면 '확인 필요'라고 말하라.
 4) 동일 입력 → 동일 출력.
 """
@@ -269,23 +277,22 @@ Rules:
                         messages=[{"role":"system","content":sys_prompt}] + ss.messages,
                         temperature=0,
                     )
-                reply = resp.choices[0].message.content or ""
-                render_assistant(style_by_work(reply, ss.bot["work"]))
+                render_assistant(style_by_work(resp.choices[0].message.content or "", ss.bot["work"]))
             except Exception as e:
                 render_assistant(f"응답 생성 중 오류가 발생했습니다: {e}")
 
     # 2) 과제2
-    elif ss.stage == 2:
+    elif ss.stage==2:
         txt = user_text.strip()
         if txt.startswith("답변"):
             closing = ("답변을 제출하셨습니다. 참여해 주셔서 감사합니다. 본 실험은 여기까지이며, 입력은 더 이상 받지 않습니다."
                        if ss.bot["tone"]==1 else
                        "답변 잘 받았어! 참여 고마워. 실험은 여기까지야, 이제 입력은 받지 않아.")
             render_assistant(style_by_work(closing, ss.bot["work"]))
-            ss.stage = 3  # ✅ 종료 전환
-            st.rerun()    # 입력창 숨김을 즉시 반영
+            ss.stage = 3
+            st.rerun()
         else:
-            # 자유 질의응답(과제2 보조)
+            # 자유 Q&A — 접두어 규칙 상기
             sys_prompt = f"""
 You are an experimental chatbot for research.
 Session TypeCode={TYPE_CODE}. (사용자 노출 금지)
@@ -294,8 +301,8 @@ Output: Korean only. Deterministic (temperature=0).
 - Tone: {"official/polite" if ss.bot["tone"]==1 else "casual/friendly"}
 - Work style: {"detailed (context-rich)" if ss.bot["work"]==1 else "concise (essentials-only)"}
 Task:
-- 참가자가 과제2 답변을 마무리할 수 있게 질문/정리를 돕고,
-- 제출 형식 `답변:`을 부드럽게 상기시켜라.
+- 참가자가 과제2 답변을 정리하도록 돕고,
+- 제출 시 **반드시 '답변:' 접두어를 쓰도록** 짧게 상기시켜라.
 """
             try:
                 with st.spinner("응답 생성 중..."):
@@ -304,7 +311,6 @@ Task:
                         messages=[{"role":"system","content":sys_prompt}] + ss.messages,
                         temperature=0,
                     )
-                reply = resp.choices[0].message.content or ""
-                render_assistant(style_by_work(reply, ss.bot["work"]))
+                render_assistant(style_by_work(resp.choices[0].message.content or "", ss.bot["work"]))
             except Exception as e:
                 render_assistant(f"응답 생성 중 오류가 발생했습니다: {e}")
