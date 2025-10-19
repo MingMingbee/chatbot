@@ -264,12 +264,39 @@ Deterministic outputs.
             render_assistant(reply)
 
     # 2) 과제2
-    elif ss.stage==2:
-        txt = user_text.strip()
-        if txt.startswith("답변"):
-            render_assistant("답변을 잘 받았습니다. 참여해 주셔서 감사합니다. 실험은 여기서 종료됩니다.")
-            ss.stage = 3
-            st.rerun()
+   elif ss.stage == 2:
+    txt = user_text.strip()
+    if txt.startswith("답변:"):
+        # 🔹 Type별 구글 폼 링크 매핑
+        FORM_LINKS = {
+            1: "https://forms.gle/8pVhiLMoiuvAC17T7",
+            2: "https://forms.gle/jhRu5fYoXRqjLBUR9",
+            3: "https://forms.gle/sshHHYmjujDLFnUm9",
+            4: "https://forms.gle/17PNwrFPP3RwqqGe6",
+            5: "https://forms.gle/Qp5S4zDZ4qWrmWhXA",
+            6: "https://forms.gle/PVmLEe9K3FoRDAU89",
+            7: "https://forms.gle/CcjfZeqJzxJnZYht5",
+            8: "https://forms.gle/7tMA3bWi5jDgfxo98",
+        }
+        form_url = FORM_LINKS.get(TYPE_CODE, None)
+
+        # 🔹 종료 멘트
+        if form_url:
+            final_msg = (
+                f"답변을 잘 받았습니다. 참여해 주셔서 감사합니다. 실험은 여기서 종료됩니다.\n\n"
+                f"아래 링크를 눌러 **설문조사에 참여해 주세요.**\n\n"
+                f"[설문조사 참여하기]({form_url})"
+            )
+        else:
+            final_msg = (
+                "답변을 잘 받았습니다. 참여해 주셔서 감사합니다. 실험은 여기서 종료됩니다.\n\n"
+                "만약 링크가 열리지 않는다면, 별도로 안내드린 주소에서 설문조사를 진행해 주세요."
+            )
+
+        render_assistant(final_msg)
+        ss.stage = 3
+        st.rerun()
+
         else:
             sys_prompt = f"""
 You are a Korean assistant discussing habitability of planets.
@@ -281,4 +308,5 @@ Deterministic outputs.
 """
             reply = llm_reply(sys_prompt)
             render_assistant(reply)
+
 
